@@ -3,4 +3,4 @@
 </p>
 
 # Houston TranStar
-Api for working with HoustonTranStar
+Api for working with Houston TranStar
