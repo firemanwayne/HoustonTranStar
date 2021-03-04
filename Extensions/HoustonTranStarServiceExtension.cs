@@ -2,21 +2,32 @@
 using HoustonTranStar.Hubs;
 using HoustonTranStar.Interface;
 using HoustonTranStar.Services;
-using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
 using System;
+using System.Net.Http;
 
-namespace HoustonTranStar.Extensions
+namespace Microsoft.Extensions.DependencyInjection
 {
     public static class HoustonTranStarServiceExtension
     {
-        public static void AddHoustonTranStarService(this IServiceCollection services, Action<HoustonTranStarOptions> Options)
+        public static void AddHoustonTranStarService(this IServiceCollection services, IHostEnvironment Env, Action<HoustonTranStarOptions> Options)
         {
-            services.Configure(Options);            
-
+            services.Configure(Options);
             services.AddTransient<HoustonTranStarHub>();
-            services.AddScoped<IHoustonTranStarServices, HoustonTranStarServices>();
-            services.AddSingleton<IHostedService, HoustonTranStarHostedService>();
+
+            services.AddScoped<IHoustonTranStarServices>(sp =>
+            {
+                var factory = sp.GetRequiredService<IHttpClientFactory>();
+                var hubContext = sp.GetRequiredService<IHubContext<HoustonTranStarHub>>();
+
+                return new HoustonTranStarServices(
+                    Env,
+                    factory,
+                    hubContext);
+            });
+
+            services.AddHostedService<HoustonTranStarHostedService>();
         }
     }
 }

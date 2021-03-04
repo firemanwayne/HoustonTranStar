@@ -1,7 +1,7 @@
-﻿using HoustonTranStar.Abstract;
-using HoustonTranStar.Concrete;
+﻿using HoustonTranStar.Concrete;
 using HoustonTranStar.Interface;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
@@ -10,43 +10,42 @@ using System.Threading.Tasks;
 
 namespace HoustonTranStar.Services
 {
-    public class HoustonTranStarHostedService : HostedService
+    public class HoustonTranStarHostedService : BackgroundService
     {
-        private readonly HoustonTranStarOptions Options;
-        private readonly IServiceProvider Services;
-        private readonly ILogger<HoustonTranStarHostedService> Logger;
-        private IHoustonTranStarServices HoustonTranStarService;
+        readonly HoustonTranStarOptions Options;
+        readonly IServiceProvider Services;
+        readonly ILogger<HoustonTranStarHostedService> Logger;
 
         public HoustonTranStarHostedService(
-            IOptions<HoustonTranStarOptions> Options,
             IServiceProvider Services,
+            IOptions<HoustonTranStarOptions> Options,
             ILogger<HoustonTranStarHostedService> Logger)
         {
-            this.Options = Options.Value;
             this.Logger = Logger;
             this.Services = Services;
+            this.Options = Options.Value;
         }
 
-        public async override Task ExecuteAsync(CancellationToken StoppingToken)
+        protected async override Task ExecuteAsync(CancellationToken StoppingToken)
         {
             try
             {
-                using (var Scope = Services.CreateScope())
-                    while (true)
-                    {
-                        HoustonTranStarService = Scope.ServiceProvider.GetRequiredService<IHoustonTranStarServices>();
-                        //await GetRoadWaySegmentDataXml();
-                        //await GetSpeedTravelTimeDataXml();
+                using var Scope = Services.CreateScope();
+                while (true)
+                {
+                    var houstonTranStarService = Scope.ServiceProvider.GetRequiredService<IHoustonTranStarServices>();
+                    //await GetRoadWaySegmentDataXml();
+                    //await GetSpeedTravelTimeDataXml();
 
-                        if (Options.IncidentUpdates)
-                            await HoustonTranStarService.UpdateIncidents();
+                    if (Options.IncidentUpdates)
+                        await houstonTranStarService.UpdateIncidents();
 
-                        if (Options.LaneClosures)
-                            await HoustonTranStarService.UpdateLaneClosures();
+                    if (Options.LaneClosures)
+                        await houstonTranStarService.UpdateLaneClosures();
 
-                        //await GetCameraListData();
-                        Thread.Sleep(60000);
-                    }
+                    //await GetCameraListData();
+                    await Task.Delay(5000, StoppingToken);
+                }
             }
             catch (Exception ex)
             {

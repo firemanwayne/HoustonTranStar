@@ -1,28 +1,12 @@
 ﻿using HoustonTranStar.Entities.Elements;
-using System;
-using System.Collections.Generic;
 using System.Xml.Serialization;
 
-namespace HoustonTranStar.Entities.LaneClosures
+namespace HoustonTranStar.Entities
 {
-    [Serializable]
-    [XmlRoot("LANE_CLOSURE_DATA")]
-    public class LaneClosureDataModel
-    {
-        [XmlAttribute("TIMESTAMP")]
-        public string TimeStamp { get; set; }
-
-        [XmlElement("REPORT_MESSAGE")]
-        public string ReportMessage { get; set; }
-
-        [XmlElement(ElementName = "LANE_CLOSURE")]
-        public List<LaneClosure> LaneClosures { get; set; }
-    }
-
     public class LaneClosure
     {
         [XmlElement(ElementName = "ID")]
-        public Id IdElement { get; set; }
+        public Id Id { get; set; }
 
         [XmlElement(ElementName = "ROADWAY_NAME")]
         public RoadwayName RoadWayNameElement { get; set; }
@@ -82,6 +66,6 @@ namespace HoustonTranStar.Entities.LaneClosures
         public DurationDescription DurationDescriptionElement { get; set; }
 
         [XmlElement(ElementName = "STATUS")]
-        public Status StatusElement { get; set; }
+        public Status Status { get; set; }
     }
 }

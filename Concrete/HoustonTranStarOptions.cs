@@ -10,9 +10,7 @@
         public bool SpeedTravelTimes { get; private set; }
 
         public void AddIncidentUpdate() => IncidentUpdates = true;
-
         public void AddLaneClosures() => LaneClosures = true;
-
         public void AddSpeedTravelTimes() => SpeedTravelTimes = true;
     }
 }

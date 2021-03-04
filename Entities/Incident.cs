@@ -1,19 +1,8 @@
 ﻿using HoustonTranStar.Entities.Elements;
-using System;
-using System.Collections.Generic;
 using System.Xml.Serialization;
 
-namespace HoustonTranStar.Entities.Incidents
+namespace HoustonTranStar.Entities
 {
-    [Serializable]
-    [XmlRoot("INCIDENT_DATA")]
-    public class IncidentDataModel
-    {
-        [XmlElement(ElementName = "INCIDENT")]
-        public List<Incident> Incidents { get; set; }
-    }
-
-    [Serializable]
     public class Incident
     {
         [XmlElement(ElementName = "ID")]

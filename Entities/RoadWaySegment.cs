@@ -1,23 +1,12 @@
 ﻿using HoustonTranStar.Entities.Elements;
-using System;
-using System.Collections.Generic;
 using System.Xml.Serialization;
 
-namespace HoustonTranStar.Entities.SpeedTravelTimes
+namespace HoustonTranStar.Entities
 {
-    [Serializable]
-    [XmlRoot("SPEED_SEGMENTS")]
-    public class RoadWaySegmentDataModel
-    {
-        [XmlElement(ElementName = "SEG")]
-        public List<RoadWaySegment> Segments { get; set; }
-    }
-
-    [Serializable]
     public class RoadWaySegment
     {
         [XmlElement(ElementName = "ORG_ROAD")]
-        public OriginRoad OriginRoadElement { get; set; }
+        public OriginRoad OriginRoad { get; set; }
 
         [XmlElement(ElementName = "ORG_DIR")]
         public OriginDirection OriginDirectionElement { get; set; }

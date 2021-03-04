@@ -1,10 +1,10 @@
 ﻿using HoustonTranStar.Concrete;
-using HoustonTranStar.Entities.Incidents;
-using HoustonTranStar.Entities.LaneClosures;
+using HoustonTranStar.Entities;
+using HoustonTranStar.Extensions;
 using HoustonTranStar.Hubs;
 using HoustonTranStar.Interface;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Hosting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,211 +18,192 @@ namespace HoustonTranStar.Services
 {
     public class HoustonTranStarServices : IHoustonTranStarServices
     {
-        private readonly IWebHostEnvironment Env;
-        private readonly IHttpClientFactory ClientFactory;
-        private readonly IHubContext<HoustonTranStarHub> HoustonTranStarHub;
+        readonly HttpClient Client;
+        readonly IHostEnvironment Env;        
+        readonly IHubContext<HoustonTranStarHub> Hub;
+        static DateTime NowCST => TimeZoneInfo.ConvertTime(DateTime.UtcNow, TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time"));
 
         public HoustonTranStarServices(
-            IWebHostEnvironment Env,
-            IHttpClientFactory ClientFactory,            
-            IHubContext<HoustonTranStarHub> HoustonTranStarHub)
+            IHostEnvironment Env,
+            IHttpClientFactory Factory,
+            IHubContext<HoustonTranStarHub> Hub)
         {
             this.Env = Env;
-            this.ClientFactory = ClientFactory;            
-            this.HoustonTranStarHub = HoustonTranStarHub;
+            this.Hub = Hub;
+
+            Client = Factory.CreateClient();
         }
 
-        public async Task UpdateCameras() => await GetCameraListData();
-
+        public async Task UpdateCameras() => await GetCameraData();
         public async Task UpdateIncidents() => await GetIncidentDataXml();
-
         public async Task UpdateLaneClosures() => await GetLaneClosureDataXml();
-
+        public async Task UpdateTravelTimes() => await GetSpeedTravelTimeDataXml();
         public async Task UpdateRoadwaySegments() => await GetRoadWaySegmentDataXml();
 
-        public async Task UpdateTravelTimes() => await GetSpeedTravelTimeDataXml();
 
-        private async Task GetRoadWaySegmentDataXml()
+        async Task GetRoadWaySegmentDataXml()
         {
-            var Client = ClientFactory.CreateClient();
-            string FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarRoadWaySegmentDataStream.xml";
+            var FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarRoadWaySegmentDataStream.xml";
 
             var Request = CreateRequest(HoustonTranStarUriManager.GetLiveSpeedDataFeedAddressXml());
             var Response = await Client.SendAsync(Request, HttpCompletionOption.ResponseHeadersRead);
 
-            using (var output = File.OpenWrite(FileStreamPath))
-            using (var content = await Response.Content.ReadAsStreamAsync())
-                await content.CopyToAsync(output);
+            using var output = File.OpenWrite(FileStreamPath);
+            using var content = await Response.Content.ReadAsStreamAsync();
+            await content.CopyToAsync(output);
         }
-
-        private async Task GetLaneClosureDataXml()
+        async Task GetLaneClosureDataXml()
         {
-            LaneClosureDataModel LaneClosureDataModel = new LaneClosureDataModel();
+            var laneClosure = new LaneClosureDTO();
 
-            if (Env.EnvironmentName.Equals("Development"))
+            if (Env.IsDevelopment())
             {
-                string FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarLaneClosureDataStream.xml";
-                using (var StreamReader = new StreamReader(FileStreamPath))
+                var FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarLaneClosureDataStream.xml";
+                using (StreamReader StreamReader = new(FileStreamPath))
                 {
                     var Reader = XmlReader.Create(StreamReader);
-                    var Serializer = new XmlSerializer(typeof(LaneClosureDataModel));
-                    LaneClosureDataModel = (LaneClosureDataModel)Serializer.Deserialize(Reader);
+                    var Serializer = new XmlSerializer(typeof(LaneClosureDTO));
+                    laneClosure = (LaneClosureDTO)Serializer.Deserialize(Reader);
 
-                    var ListLaneClosures = new List<LaneClosure>();
-                    var ListGroupedLaneClosures = new List<LaneClosure>();
+                    var laneClosures = new List<LaneClosure>();
+                    var groupedLaneClosures = new List<LaneClosure>();
 
-                    foreach (LaneClosure LaneClosure in LaneClosureDataModel.LaneClosures)
-                        ListLaneClosures.Add(LaneClosure);
+                    foreach (var LaneClosure in laneClosure.LaneClosures)
+                        laneClosures.Add(LaneClosure);
                 }
-                await HoustonTranStarHub.Clients.All.SendAsync("updateLaneClosureData", LaneClosureDataModel, TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time")).ToString("MM/dd/yyyy HH:mm:ss"));
+
+                await Hub.BroadCast(("updateLaneClosureData", (laneClosure, NowCST)));
             }
             else
             {
                 try
                 {
-                    using (StreamReader StreamReader = new StreamReader(await StreamLaneClosureDataAsync()))
+                    using (StreamReader StreamReader = new(await StreamLaneClosureDataAsync()))
                     {
                         var Reader = XmlReader.Create(StreamReader);
-                        var Serializer = new XmlSerializer(typeof(LaneClosureDataModel));
-                        LaneClosureDataModel = (LaneClosureDataModel)Serializer.Deserialize(Reader);
+                        var Serializer = new XmlSerializer(typeof(LaneClosureDTO));
+                        laneClosure = (LaneClosureDTO)Serializer.Deserialize(Reader);
 
                         IList<LaneClosure> ListLaneClosures = new List<LaneClosure>();
                         IList<LaneClosure> ListGroupedLaneClosures = new List<LaneClosure>();
-                        foreach (var LaneClosure in LaneClosureDataModel.LaneClosures)
+                        foreach (var LaneClosure in laneClosure.LaneClosures)
                             ListLaneClosures.Add(LaneClosure);
                     }
-                    await HoustonTranStarHub.Clients.All.SendAsync("updateLaneClosureData", LaneClosureDataModel, TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time")).ToString("MM/dd/yyyy HH:mm:ss"));
+                    await Hub.BroadCast(("updateLaneClosureData", (laneClosure, NowCST)));
                 }
                 catch (Exception ex)
                 {
-                    await HoustonTranStarHub.Clients.All.SendAsync("exception", ex);
+                    await Hub.BroadCast(("exception", (ex, NowCST)));
                 }
             }
         }
-
-        private async Task GetIncidentDataXml()
+        async Task GetIncidentDataXml()
         {
-            IncidentDataModel IncidentDataModel = new IncidentDataModel();
+            var incident = new IncidentDTO();
 
-            if (Env.EnvironmentName.Equals("Development"))
+            if (Env.IsDevelopment())
             {
-                string FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarIncidentDataStream.xml";
-                using (var StreamReader = new StreamReader(FileStreamPath))
-                {
-                    var Reader = XmlReader.Create(StreamReader);
-                    var Serializer = new XmlSerializer(typeof(IncidentDataModel));
+                var FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarIncidentDataStream.xml";
+                using var StreamReader = new StreamReader(FileStreamPath);
+                var Reader = XmlReader.Create(StreamReader);
+                var Serializer = new XmlSerializer(typeof(IncidentDTO));
 
-                    IncidentDataModel = (IncidentDataModel)Serializer.Deserialize(Reader);
+                incident = (IncidentDTO)Serializer.Deserialize(Reader);
+
+                var Incidents = new List<Incident>();
+                var ListGroupedIncidents = new List<Incident>();
+
+                foreach (var Incident in incident.Incidents)
+                    Incidents.Add(Incident);
+
+                incident.Incidents = new List<Incident>();
+
+                var GroupedIncidents = Incidents
+                    .OrderByDescending(i => i.DetectionTimeElement.Value)
+                    .GroupBy(i => i.RoadWayNameElement.Value)
+                    .SelectMany((IGrouping<string, Incident> i) => i);
+
+                foreach (var item in GroupedIncidents)
+                    ListGroupedIncidents.Add(item);
+
+                incident.Incidents = ListGroupedIncidents
+                    .ToList();
+
+                await Hub.BroadCast(("updateIncidentData", (incident, NowCST)));               
+            }
+            else
+            {
+                try
+                {
+                    using var StreamReader = new StreamReader(await StreamIncidentDataAsyc());
+                    var Reader = XmlReader.Create(StreamReader);
+                    var Serializer = new XmlSerializer(typeof(IncidentDTO));
+                    incident = (IncidentDTO)Serializer.Deserialize(Reader);
 
                     var Incidents = new List<Incident>();
                     var ListGroupedIncidents = new List<Incident>();
 
-                    foreach (var Incident in IncidentDataModel.Incidents)
+                    foreach (var Incident in incident.Incidents)
                         Incidents.Add(Incident);
 
-                    IncidentDataModel.Incidents = new List<Incident>();
+                    incident.Incidents = new List<Incident>();
 
                     var GroupedIncidents = Incidents
-                        .OrderByDescending(i => i.DetectionTimeElement.Value)
                         .GroupBy(i => i.RoadWayNameElement.Value)
                         .SelectMany((IGrouping<string, Incident> i) => i);
 
                     foreach (var item in GroupedIncidents)
                         ListGroupedIncidents.Add(item);
 
-                    IncidentDataModel.Incidents = ListGroupedIncidents
+                    incident.Incidents = ListGroupedIncidents
                         .ToList();
 
-                    await HoustonTranStarHub.Clients.All.SendAsync("updateIncidentData", IncidentDataModel, TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time")).ToString("MM/dd/yyyy HH:mm:ss"));
-                }
-            }
-            else
-            {
-                try
-                {
-                    using (var StreamReader = new StreamReader(await StreamIncidentDateAsyc()))
-                    {
-                        var Reader = XmlReader.Create(StreamReader);
-                        var Serializer = new XmlSerializer(typeof(IncidentDataModel));
-                        IncidentDataModel = (IncidentDataModel)Serializer.Deserialize(Reader);
-
-                        var Incidents = new List<Incident>();
-                        var ListGroupedIncidents = new List<Incident>();
-
-                        foreach (var Incident in IncidentDataModel.Incidents)
-                            Incidents.Add(Incident);
-
-                        IncidentDataModel.Incidents = new List<Incident>();
-
-                        var GroupedIncidents = Incidents
-                            .GroupBy(i => i.RoadWayNameElement.Value)
-                            .SelectMany((IGrouping<string, Incident> i) => i);
-
-                        foreach (var item in GroupedIncidents)
-                            ListGroupedIncidents.Add(item);
-
-                        IncidentDataModel.Incidents = ListGroupedIncidents
-                            .ToList();
-
-                        await HoustonTranStarHub.Clients.All.SendAsync("updateIncidentData", IncidentDataModel, TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById("Central Standard Time")).ToString("MM/dd/yyyy HH:mm:ss"));
-                    }
+                    await Hub.BroadCast(("updateIncidentData", (incident, NowCST)));                   
                 }
                 catch (Exception ex)
                 {
-                    await HoustonTranStarHub.Clients.All.SendAsync("exception", ex);
+                    await Hub.BroadCast(("exception", (ex, NowCST)));
                 }
             }
         }
-
-        private async Task GetSpeedTravelTimeDataXml()
+        async Task GetSpeedTravelTimeDataXml()
         {
-            var Client = ClientFactory.CreateClient();
-            string FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarSpeedTravelTimeDataStream.xml";
+            var FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarSpeedTravelTimeDataStream.xml";
 
             var Request = CreateRequest(HoustonTranStarUriManager.GetLiveTravelTimeDataFeedAddressXml());
             var Response = await Client.SendAsync(Request, HttpCompletionOption.ResponseHeadersRead);
 
-            using (var output = File.OpenWrite(FileStreamPath))
-            using (var content = await Response.Content.ReadAsStreamAsync())
-                await content.CopyToAsync(output);
+            using var output = File.OpenWrite(FileStreamPath);
+            using var content = await Response.Content.ReadAsStreamAsync();
+            await content.CopyToAsync(output);
         }
 
-        private async Task GetCameraListData()
+        async Task GetCameraData()
         {
-            var Client = ClientFactory.CreateClient();
-            string FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarCameraListStream.xml";
+            var FileStreamPath = $"{Env.ContentRootPath}\\wwwroot\\cached\\TranStarCameraListStream.xml";
 
             var Request = CreateRequest(HoustonTranStarUriManager.GetLiveCameraListDataFeedAddress());
             var Response = await Client.SendAsync(Request, HttpCompletionOption.ResponseHeadersRead);
 
-            using (var output = File.OpenWrite(FileStreamPath))
-            using (var content = await Response.Content.ReadAsStreamAsync())
-                await content.CopyToAsync(output);
+            using var output = File.OpenWrite(FileStreamPath);
+            using var content = await Response.Content.ReadAsStreamAsync();
+            await content.CopyToAsync(output);
         }
-
-        private async Task<Stream> StreamIncidentDateAsyc()
+        async Task<Stream> StreamIncidentDataAsyc()
         {
-            var Client = ClientFactory.CreateClient();
-
             var Request = CreateRequest(HoustonTranStarUriManager.GetLiveIncidentDataFeedAddressXml());
             var Response = await Client.SendAsync(Request, HttpCompletionOption.ResponseHeadersRead);
 
             return await Response.Content.ReadAsStreamAsync();
         }
-
-        private async Task<Stream> StreamLaneClosureDataAsync()
+        async Task<Stream> StreamLaneClosureDataAsync()
         {
-            var Client = ClientFactory.CreateClient();        
-
             var Request = CreateRequest(HoustonTranStarUriManager.GetLiveLaneClosureDataFeedAddressXml());
             var Response = await Client.SendAsync(Request, HttpCompletionOption.ResponseHeadersRead);
 
             return await Response.Content.ReadAsStreamAsync();
         }
 
-        private static HttpRequestMessage CreateRequest(Uri Path)
-        {
-            return new HttpRequestMessage(HttpMethod.Get, Path.AbsoluteUri);
-        }
+        static HttpRequestMessage CreateRequest(Uri Path) => new(HttpMethod.Get, Path.AbsoluteUri);        
     }
 }
