@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/firemanwayne/HoustonTranStar/src/blob/master/Logos/transtarlogo.png" />  
+  <img src="https://raw.githubusercontent.com/firemanwayne/HoustonTranStar/master/src/Logos/transtarlogo.png" />  
 </p>
 
 # Houston TranStar
